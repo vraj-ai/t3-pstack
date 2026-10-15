@@ -56,6 +56,8 @@ function installer(command, source = repoRoot) {
 const row = (report, dir) => report.homes.find((h) => h.dir === join(home, dir));
 const failing = (checks) => checks.filter((c) => !c.ok && !c.warn).map((c) => `${c.name}: ${c.detail}`);
 const HOOK = "t3-pstack@t3-pstack:hooks/codex-hooks.json:session_start:0:0";
+const PROMPT_HOOK = "t3-pstack@t3-pstack:hooks/codex-hooks.json:user_prompt_submit:0:0";
+const NOT_PINNED = "not from the hooks/codex-hooks.json this release pins";
 
 // The plugin as a marketplace of its own, outside this checkout.
 function pluginCopy(dir) {
@@ -183,7 +185,7 @@ describe.skipIf(!enabled)("the installer, end to end", () => {
     const { status, report } = installer("doctor");
     expect(status).toBe(1);
     expect(failing(row(report, ".codex").checks)).toEqual([
-      `session-start hook trusted: ${HOOK} untrusted`,
+      `session-start hook trusted: ${HOOK} untrusted; ${PROMPT_HOOK} untrusted`,
     ]);
     expect(failing(row(report, ".claude-pool").checks)).toEqual([
       `other-scope records: project ${home} at 1.0.11`,
@@ -201,11 +203,13 @@ describe.skipIf(!enabled)("the installer, end to end", () => {
     expect(status).toBe(0);
     expect(row(report, ".codex").steps).toEqual([
       `trusted hook ${HOOK} (was untrusted)`,
+      `trusted hook ${PROMPT_HOOK} (was untrusted)`,
     ]);
     expect(row(report, ".codex-work").steps).toEqual([
       `added the t3-pstack marketplace from ${repoRoot.replace(/\/$/, "")}`,
       `installed ${version}`,
       `trusted hook ${HOOK} (was untrusted)`,
+      `trusted hook ${PROMPT_HOOK} (was untrusted)`,
     ]);
     const pool = row(report, ".claude-pool").steps;
     expect(pool[0]).toBe(`moved the project-scope record for ${home} from 1.0.11 to ${version}`);
@@ -220,7 +224,7 @@ describe.skipIf(!enabled)("the installer, end to end", () => {
 
     const after = await probe(join(home, ".codex"));
     console.log("after:", JSON.stringify(after));
-    expect(after.hookEvents).toEqual(["hook/started", "hook/completed"]);
+    expect(after.hookEvents).toEqual(["hook/started", "hook/completed", "hook/started", "hook/completed"]);
     expect(after.routedMessages).toBe(1);
 
     // Claude Code needs no trust; the same routing text arrives through its hook.
@@ -314,13 +318,14 @@ describe.skipIf(!enabled)("the installer, on a t3-pstack marketplace from anothe
     const foreign = `marketplace: ${counterfeit}, which is neither chhoumann/t3-pstack nor --source`;
     expect(failing(row(report, ".codex").checks)).toEqual([
       foreign,
-      `session-start hook trusted: ${HOOK} untrusted, not from the hooks/codex-hooks.json this release pins`,
+      `session-start hook trusted: ${HOOK} untrusted, ${NOT_PINNED}; ${PROMPT_HOOK} untrusted, ${NOT_PINNED}`,
     ]);
     expect(failing(row(report, ".claude").checks)).toEqual([foreign, "installed: not installed", "enabled: no"]);
     expect(row(report, ".codex-dev").steps).toEqual([
       `added the t3-pstack marketplace from ${repoRoot.replace(/\/$/, "")}`,
       `installed ${version}`,
       `trusted hook ${HOOK} (was untrusted)`,
+      `trusted hook ${PROMPT_HOOK} (was untrusted)`,
     ]);
 
     const after = await probe(join(home, ".codex"));
@@ -360,7 +365,7 @@ describe.skipIf(!enabled)("the installer, on a release that changes the hook ent
     expect(row(unpinned.report, ".claude").steps).toEqual([`updated ${version} to ${next}`]);
     expect(row(unpinned.report, ".codex").steps).toEqual([`updated ${version} to ${next}`]);
     expect(failing(row(unpinned.report, ".codex").checks)).toEqual([
-      `session-start hook trusted: ${HOOK} modified, not from the hooks/codex-hooks.json this release pins`,
+      `session-start hook trusted: ${HOOK} modified, ${NOT_PINNED}; ${PROMPT_HOOK} trusted, ${NOT_PINNED}`,
     ]);
 
     const pins = join(source, "tools/frozen-hooks.json");
@@ -374,7 +379,7 @@ describe.skipIf(!enabled)("the installer, on a release that changes the hook ent
     expect(row(report, ".claude").steps).toEqual([]);
     expect(row(report, ".codex").steps).toEqual([`trusted hook ${HOOK} (was modified)`]);
     const after = await probe(join(home, ".codex"));
-    expect(after.hookEvents).toEqual(["hook/started", "hook/completed"]);
+    expect(after.hookEvents).toEqual(["hook/started", "hook/completed", "hook/started", "hook/completed"]);
     expect(after.routedMessages).toBe(1);
   }, 300_000);
 });
@@ -437,7 +442,7 @@ describe.skipIf(!enabled)("the installer, on a Codex home that changes while it 
     expect(status).toBe(1);
     expect(row(report, ".codex").steps).toEqual([]);
     expect(failing(row(report, ".codex").checks)).toEqual([
-      `session-start hook trusted: ${HOOK} untrusted, not from the hooks/codex-hooks.json this release pins`,
+      `session-start hook trusted: ${HOOK} untrusted, ${NOT_PINNED}; ${PROMPT_HOOK} untrusted, ${NOT_PINNED}`,
     ]);
     expect(await trustState()).toBe(null);
   }, 300_000);
@@ -449,7 +454,7 @@ describe.skipIf(!enabled)("the installer, on a Codex home that changes while it 
     expect(existsSync(process.env.CODEX_ATTACK)).toBe(false);
     expect(status).toBe(1);
     expect(row(report, ".codex").steps).toEqual([]);
-    expect(failing(row(report, ".codex").checks)).toEqual([`session-start hook trusted: ${HOOK} untrusted`]);
+    expect(failing(row(report, ".codex").checks)).toEqual([`session-start hook trusted: ${HOOK} untrusted; ${PROMPT_HOOK} untrusted`]);
     expect(await trustState()).toBe(null);
 
     // The attacker's entry, back for the next session, does not run.

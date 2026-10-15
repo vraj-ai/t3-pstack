@@ -6,6 +6,14 @@ The skill text is Lauren's. A generated set of substitutions rewrites only what 
 
 t3-pstack works only inside T3.
 
+## This fork
+
+`vraj-ai/t3-pstack` adds one thing to upstream: a prompt can name several skills, and the `skill-chain.mjs` hook has the agent read them in prompt order. Install this release from the fork and point every home at it:
+
+```shell
+npx -y github:vraj-ai/t3-pstack#v2.0.0-rc.5.vraj.1 install --source vraj-ai/t3-pstack
+```
+
 ## Install, update, and check
 
 ```shell

@@ -2,6 +2,16 @@
 
 This file is the release changelog, with one `## <version> - <title>` entry per release, newest first. The Cursor-to-T3 rewrite rules live in [`tools/substitutions.json`](tools/substitutions.json), and the [sync boundary](CONTRIBUTING.md#the-sync-boundary) in `CONTRIBUTING.md` defines how a change to upstream's skill content is declared.
 
+## 2.0.0-rc.5.vraj.1 - one prompt can name several skills
+
+This is the vraj-ai fork of t3-pstack. A new `UserPromptSubmit` hook, `hooks/skill-chain.mjs`, finds every `/name`, `/plugin:name`, and `$name` in a prompt that resolves to an installed SKILL.md, and lists them in prompt order. On Claude Code the agent invokes each through the Skill tool, and reads the SKILL.md only when the skill refuses model invocation. On Codex it reads each SKILL.md. Before this, Claude Code and Codex expanded only a leading skill, so a later `/t3-pstack:how` was plain text.
+
+The hook resolves names as Claude Code does: personal skills, then project skills from the start directory up to the repository root, then plugins. It reads `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, prefers the active host's plugin cache, and skips a skill that `skillOverrides` turns off. A project skill whose real path leaves its directory is ignored, and so are fenced code blocks and tokens that resolve to nothing, such as `/tmp/x` or `$HOME`. One leading skill in the host's own syntax adds nothing. The hook needs `node` on `PATH` and fails open.
+
+The installer now trusts a Codex hooks file's entries together: when Codex lists any entry the pinned file does not hold, it trusts none.
+
+Both hooks files change, so rerun the installer: `npx -y github:vraj-ai/t3-pstack install --source vraj-ai/t3-pstack`. Until it reruns, Codex does not trust the new entry, and the session-start hook stops routing in every Codex home.
+
 ## 2.0.0-rc.5 - Lauren's `e5136d8`: four principles restated as reasoning
 
 t3-pstack moves to Lauren Tan's pstack at cursor/plugins `e5136d8` for all three components. Only pstack changed upstream, and its version stays 0.15.25: four principles that banned or prescribed specific mechanisms now state the idea an agent derives each call from ([pstack #633](https://github.com/cursor/plugins/pull/633)). `poteto-mode`'s principles index and `/correct`'s test step follow. `bun tools/sync.mjs` wrote the four principle leaves and `/correct` cleanly, and merged `poteto-mode` around its declared fork's four rules with no conflict. No rule anchors on the changed text, so the port's diff to these six files is upstream's line for line. At `e5136d8` each component's dry run reports no undeclared fork, no denylist hit, and no substitution that matches nothing. Upstream's README and guide changes fall under paths the port excludes, and neither hooks file changes.

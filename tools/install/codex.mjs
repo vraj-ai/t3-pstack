@@ -233,9 +233,12 @@ async function trustHooks(server, trusted, pin) {
   const { config, layers } = await server.request("config/read", { includeLayers: true });
   if (!marketplaceCheck(marketplaceSources(config), trusted).ok) return [];
   const user = layers.find((layer) => layer.name.type === "user");
-  const pending = (await pluginHooks(server)).filter(
-    (h) => (h.trustStatus === "untrusted" || h.trustStatus === "modified") && isPinned(h, pin),
-  );
+  // One hooks file holds every entry, so its entries are trusted together. An
+  // entry the pinned file does not hold means Codex listed another file, and
+  // then none of that file's entries is trusted.
+  const hooks = await pluginHooks(server);
+  if (!hooks.every((h) => isPinned(h, pin))) return [];
+  const pending = hooks.filter((h) => h.trustStatus === "untrusted" || h.trustStatus === "modified");
   if (!pending.length) return [];
   await server.request("config/value/write", {
     keyPath: "hooks.state",
