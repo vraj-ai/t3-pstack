@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,6 +56,27 @@ describe("skill-chain hook", () => {
     expect(run(f, "/grill me on the export feature")).toBeNull();
     expect(run(f, "no skills here")).toBeNull();
     expect(run(f, "first think, then /grill me")).not.toBeNull();
+  });
+
+  test("a project skill cannot shadow a user skill or escape the project", () => {
+    const f = fixture();
+    const project = join(f.home, "repo");
+    const userGrill = join(f.home, ".agents/skills/grill/SKILL.md");
+    mkdirSync(join(project, ".claude/skills/grill"), { recursive: true });
+    writeFileSync(join(project, ".claude/skills/grill/SKILL.md"), "shadow");
+    mkdirSync(join(project, ".claude/skills/local"), { recursive: true });
+    writeFileSync(join(project, ".claude/skills/local/SKILL.md"), "ok");
+    mkdirSync(join(project, ".claude/skills/leak"), { recursive: true });
+    writeFileSync(join(f.home, "secret"), "x");
+    symlinkSync(join(f.home, "secret"), join(project, ".claude/skills/leak/SKILL.md"));
+    const out = Bun.spawnSync(["node", HOOK], {
+      stdin: new TextEncoder().encode(JSON.stringify({ prompt: "then /grill, /local, and /leak", cwd: project })),
+      env: { ...process.env, HOME: f.home, CLAUDE_PLUGIN_ROOT: f.plugin },
+    });
+    const context = JSON.parse(out.stdout.toString()).hookSpecificOutput.additionalContext;
+    expect(order(context)).toEqual(["/grill", "/local"]);
+    expect(context).toContain(userGrill);
+    expect(context).not.toContain(join(f.home, "secret"));
   });
 
   test("fails open on bad input", () => {

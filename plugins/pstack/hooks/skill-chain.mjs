@@ -11,7 +11,7 @@
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TOKEN = /(?<![^\s(`"'])[/$]([a-z0-9][a-z0-9_-]*(?::[a-z0-9][a-z0-9_-]*)?)(?![\w/:-])/g;
@@ -57,16 +57,30 @@ export function resolve(name, { cwd, pluginRoot, pluginName = "t3-pstack" }) {
     const [plugin, skill] = name.split(":");
     return (plugin === pluginName && own(skill)) || cachedSkill(plugin, skill);
   }
+  // The user's own skills and this plugin come first, so a cloned repo cannot
+  // shadow them. A project skill counts only when its real path stays inside
+  // the project, so a symlink cannot pull an outside file into context.
   const home = homedir();
-  const roots = [
-    ...(cwd ? [".claude/skills", ".agents/skills"].map((d) => join(cwd, d)) : []),
-    ...[".claude/skills", ".agents/skills", ".codex/skills"].map((d) => join(home, d)),
-  ];
-  for (const root of roots) {
+  for (const root of [".claude/skills", ".agents/skills", ".codex/skills"].map((d) => join(home, d))) {
     const path = file(join(root, name, "SKILL.md"));
     if (path) return path;
   }
-  return own(name) || cachedSkill(null, name);
+  const mine = own(name);
+  if (mine) return mine;
+  const project = cwd ? realOrNull(cwd) : null;
+  for (const root of project ? [".claude/skills", ".agents/skills"].map((d) => join(project, d)) : []) {
+    const path = file(join(root, name, "SKILL.md"));
+    if (path && path.startsWith(project + sep)) return path;
+  }
+  return cachedSkill(null, name);
+}
+
+function realOrNull(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
 }
 
 export function chain(prompt, options) {
