@@ -65,9 +65,9 @@ const manifest = (root) => json(join(root, "plugin.json")).name ?? json(join(roo
 
 // The active host's config homes, skill roots, project skill directories, and
 // plugin caches. Devin runs this hook through Claude Code's hooks file, but
-// reads `/name` too and keeps its skills and cache elsewhere, so it needs its
-// own roots. Its cache wins there, then Claude Code's copy of a plugin, then
-// Codex's.
+// reads `/name` too and keeps its skills and cache elsewhere (`devin skills
+// paths`), so it needs its own roots. Its roots win there, then the other
+// hosts' copies of a plugin, as with Codex.
 export function hosts(runtime, env = process.env) {
   const home = homedir();
   const claudeHome = env.CLAUDE_CONFIG_DIR || join(home, ".claude");
@@ -93,7 +93,7 @@ export function hosts(runtime, env = process.env) {
       runtime: "codex",
       sigil: "$",
       skillRoots: [join(codexHome, "skills"), agents, join(claudeHome, "skills")],
-      projectSubdirs: [".codex/skills", ".agents/skills", ".claude/skills"],
+      projectSubdirs: [".claude/skills", ".agents/skills"],
       caches: [codexCache, claudeCache],
       settings: [],
     };
