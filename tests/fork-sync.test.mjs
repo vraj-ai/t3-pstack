@@ -20,6 +20,17 @@ const git = (cwd, ...args) => {
 const read = (dir, path) => readFileSync(join(dir, path), "utf8");
 const edit = (dir, path, from, to) => writeFileSync(join(dir, path), read(dir, path).replace(from, to));
 
+// The release the fixture's fork has already made: one marker above what this
+// checkout ships, so its CHANGES.md heading cannot collide with a real one and
+// the merge still has a fork version of its own to preserve.
+const forkRelease = (() => {
+  const shipped = read(repoRoot, "VERSION").trim();
+  const dotted = shipped.match(/^(.*\.)vraj\.(\d+)$/);
+  if (dotted) return `${dotted[1]}vraj.${Number(dotted[2]) + 1}`;
+  const dashed = shipped.match(/^(.*)-vraj\.(\d+)$/);
+  return dashed ? `${dashed[1]}-vraj.${Number(dashed[2]) + 1}` : `${shipped}.vraj.1`;
+})();
+
 // `release` edits the upstream clone and commits it. The fork clone gets its
 // own release, so VERSION conflicts and CHANGES.md merges as a union.
 function fixture(release, forkEdit = () => {}) {
@@ -32,8 +43,8 @@ function fixture(release, forkEdit = () => {}) {
   git(root, "clone", "-q", "--bare", repoRoot, origin);
   git(origin, "update-ref", "refs/heads/main", git(repoRoot, "rev-parse", "HEAD"));
   for (const dir of [fork, up]) git(root, "clone", "-q", "-b", "main", origin, dir);
-  writeFileSync(join(fork, "VERSION"), "2.0.0-rc.5.vraj.2\n");
-  edit(fork, "CHANGES.md", "\n## ", "\n## 2.0.0-rc.5.vraj.2 - fork change\n\nFork entry.\n\n## ");
+  writeFileSync(join(fork, "VERSION"), `${forkRelease}\n`);
+  edit(fork, "CHANGES.md", "\n## ", `\n## ${forkRelease} - fork change\n\nFork entry.\n\n## `);
   writeFileSync(join(fork, "fork.txt"), "fork\n");
   forkEdit(fork);
   git(fork, "add", "-A");
@@ -68,7 +79,7 @@ describe("fork-sync.sh", () => {
     expect(JSON.parse(read(f.fork, "package.json")).version).toBe("2.0.0-rc.6.vraj.1");
     expect(read(f.fork, "README.md")).toContain("npx -y github:vraj-ai/t3-pstack#v2.0.0-rc.6.vraj.1 install");
     const changes = read(f.fork, "CHANGES.md");
-    for (const heading of ["## 2.0.0-rc.6.vraj.1 - ", "## 2.0.0-rc.6 - test release", "## 2.0.0-rc.5.vraj.2 - fork change"]) expect(changes).toContain(heading);
+    for (const heading of ["## 2.0.0-rc.6.vraj.1 - ", "## 2.0.0-rc.6 - test release", `## ${forkRelease} - fork change`]) expect(changes).toContain(heading);
     expect(read(f.fork, "fork.txt")).toBe("fork\n");
     expect(git(f.fork, "rev-list", "--parents", "-n", "1", "HEAD").split(" ")).toHaveLength(3);
     expect(git(f.fork, "status", "--porcelain")).toBe("");
