@@ -4,7 +4,7 @@ This file is the release changelog, with one `## <version> - <title>` entry per 
 
 ## 2.0.0-rc.5.vraj.2 - the skill-chain hook resolves Devin's skills
 
-Devin runs Claude Code's hooks file, so the hook now recognizes it. When Devin exports `DEVIN_PLUGIN_ROOT`, names resolve against Devin's own roots — `~/.config/devin/skills`, `~/.config/cognition/skills`, and a project's `.devin/skills` and `.cognition/skills` — and its plugin cache at `~/.local/share/devin/cli/plugins/cache`. That cache names a directory after a plugin's source rather than the plugin, so the plugin's manifest supplies the name. Devin's prompt hook input carries no `cwd`, so the hook takes the project directory from `DEVIN_PROJECT_DIR`. Claude Code and Codex resolve exactly as before: a Devin-only skill does not resolve there.
+Devin runs Claude Code's hooks file, so the hook now recognizes it. When Devin exports `DEVIN_PLUGIN_ROOT`, names resolve against Devin's own roots — `~/.config/devin/skills`, `~/.config/cognition/skills`, and a project's `.devin/skills` and `.cognition/skills` — and its plugin cache at `~/.local/share/devin/cli/plugins/cache`. That cache names a directory after a plugin's source rather than the plugin, so the plugin's manifest supplies the name, whether it sits at the cache root, in `.claude-plugin/`, or in `.devin-plugin/`. Devin's prompt hook input carries no `cwd`, so the hook takes the project directory from `DEVIN_PROJECT_DIR`. Claude Code and Codex resolve exactly as before: a Devin-only skill does not resolve there.
 
 Install the fork for Devin with `devin plugins install --yes vraj-ai/t3-pstack#plugins/pstack`, and pick up later releases with `devin plugins update`.
 

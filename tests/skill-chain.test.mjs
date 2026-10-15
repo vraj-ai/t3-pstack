@@ -127,11 +127,16 @@ describe("skill-chain hook", () => {
     const version = join(f.home, ".local/share/devin/cli/plugins/cache/github.com_addyosmani_agent-skills-dae9f025/0.6.13");
     write(join(version, "plugin.json"), JSON.stringify({ name: "agent-skills" }));
     const review = write(join(version, "skills/review/SKILL.md"));
-    const context = run(f, "then /deploy, /recall, and /agent-skills:review", { env: { DEVIN_PLUGIN_ROOT: f.plugin } });
-    expect(order(context)).toEqual(["/deploy", "/recall", "/agent-skills:review"]);
+    // A native Devin plugin carries this manifest and no other.
+    const native = join(f.home, ".local/share/devin/cli/plugins/cache/Users_vraj_plugins_pstack-0a1b2c3d/1.0.0");
+    write(join(native, ".devin-plugin/plugin.json"), JSON.stringify({ name: "native" }));
+    const nativeSkill = write(join(native, "skills/deploy/SKILL.md"));
+    const context = run(f, "then /deploy, /recall, /agent-skills:review, /native:deploy", { env: { DEVIN_PLUGIN_ROOT: f.plugin } });
+    expect(order(context)).toEqual(["/deploy", "/recall", "/agent-skills:review", "/native:deploy"]);
     expect(context).toContain(devin);
     expect(context).toContain(cognition);
     expect(context).toContain(review);
+    expect(context).toContain(nativeSkill);
   });
 
   test("Devin takes the project directory from its own variable", () => {

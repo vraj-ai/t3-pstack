@@ -59,9 +59,15 @@ const inside = (dir, path) => {
 };
 // Claude Code and Codex name a cache directory after the plugin it holds, in
 // a marketplace/plugin/version nest. Devin nests source/version instead, so
-// only its manifest holds the plugin's name.
+// only its manifest holds the plugin's name. Its native manifest is
+// `.devin-plugin/plugin.json`; a Claude-format plugin, which Devin installs
+// too, puts it at the root or in `.claude-plugin/`.
 const cache = (root, layout) => ({ root, layout });
-const manifest = (root) => json(join(root, "plugin.json")).name ?? json(join(root, ".claude-plugin/plugin.json")).name ?? null;
+const manifest = (root) =>
+  json(join(root, "plugin.json")).name ??
+  json(join(root, ".claude-plugin/plugin.json")).name ??
+  json(join(root, ".devin-plugin/plugin.json")).name ??
+  null;
 
 // The active host's config homes, skill roots, project skill directories, and
 // plugin caches. Devin runs this hook through Claude Code's hooks file, but
