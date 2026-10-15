@@ -14,6 +14,8 @@ t3-pstack works only inside T3.
 npx -y github:vraj-ai/t3-pstack#v2.0.0-rc.5.vraj.1 install --source vraj-ai/t3-pstack
 ```
 
+Every day, `.github/workflows/upstream-sync.yml` merges upstream `main` with `tools/fork-sync.sh`. When upstream releases a version, the fork releases it with `.vraj.1` appended and a matching tag. The merge runs every check, and a separate job with no repo code pushes the result. A conflict outside the version files, or a failed check, opens a "Upstream sync needs a fix" issue instead.
+
 ## Install, update, and check
 
 ```shell
