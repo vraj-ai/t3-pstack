@@ -1,10 +1,10 @@
 {
   "plugins/pstack/hooks/hooks.json": {
-    "sha256": "e8b7bfbdea6a98dba28ea25a1adc3d999c2b71fed1d7b703444550f8ab5878f9",
+    "sha256": "6ef47a0104e26ff97a57baafc862eb8d56ea250ab8497b3336ee7246ddd7bee6",
     "changedIn": "2.0.0-rc.5.vraj.1"
   },
   "plugins/pstack/hooks/codex-hooks.json": {
-    "sha256": "ace6cfd78bb6331882e81f25b3f02addd9383883b684715d83d1f8864488400c",
+    "sha256": "14569c1e36389e9008440924f6bf77fccc92a89703adbd3c02fc40dad5c21662",
     "changedIn": "2.0.0-rc.5.vraj.1"
   }
 }

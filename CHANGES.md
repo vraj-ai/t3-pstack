@@ -4,7 +4,11 @@ This file is the release changelog, with one `## <version> - <title>` entry per 
 
 ## 2.0.0-rc.5.vraj.1 - one prompt can name several skills
 
-This is the vraj-ai fork of t3-pstack. A new `UserPromptSubmit` hook, `hooks/skill-chain.mjs`, finds every `/name`, `/plugin:name`, and `$name` in a prompt that resolves to an installed SKILL.md, and tells the agent to read them in prompt order. Claude Code and Codex expand only a leading skill, so before this a later `/t3-pstack:how` was plain text. A token that resolves to nothing, such as `/tmp/x` or `$HOME`, is ignored, and one skill at the start of the prompt adds nothing. The hook needs `node` on `PATH` and fails open.
+This is the vraj-ai fork of t3-pstack. A new `UserPromptSubmit` hook, `hooks/skill-chain.mjs`, finds every `/name`, `/plugin:name`, and `$name` in a prompt that resolves to an installed SKILL.md, and lists them in prompt order. On Claude Code the agent invokes each through the Skill tool, and reads the SKILL.md only when the skill refuses model invocation. On Codex it reads each SKILL.md. Before this, Claude Code and Codex expanded only a leading skill, so a later `/t3-pstack:how` was plain text.
+
+The hook resolves names as Claude Code does: personal skills, then project skills from the start directory up to the repository root, then plugins. It reads `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, prefers the active host's plugin cache, and skips a skill that `skillOverrides` turns off. A project skill whose real path leaves its directory is ignored, and so are fenced code blocks and tokens that resolve to nothing, such as `/tmp/x` or `$HOME`. One leading skill in the host's own syntax adds nothing. The hook needs `node` on `PATH` and fails open.
+
+The installer now trusts a Codex hooks file's entries together: when Codex lists any entry the pinned file does not hold, it trusts none.
 
 Both hooks files change, so rerun the installer: `npx -y github:vraj-ai/t3-pstack install --source vraj-ai/t3-pstack`. Until it reruns, Codex does not trust the new entry, and the session-start hook stops routing in every Codex home.
 
