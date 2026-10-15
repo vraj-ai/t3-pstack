@@ -2,6 +2,12 @@
 
 This file is the release changelog, with one `## <version> - <title>` entry per release, newest first. The Cursor-to-T3 rewrite rules live in [`tools/substitutions.json`](tools/substitutions.json), and the [sync boundary](CONTRIBUTING.md#the-sync-boundary) in `CONTRIBUTING.md` defines how a change to upstream's skill content is declared.
 
+## 2.0.0-rc.5.vraj.2 - the skill-chain hook resolves Devin's skills
+
+Devin runs Claude Code's hooks file, so the hook now recognizes it. When Devin exports `DEVIN_PLUGIN_ROOT`, names resolve against Devin's own roots — `~/.config/devin/skills`, `~/.config/cognition/skills`, and a project's `.devin/skills` and `.cognition/skills` — and its plugin cache at `~/.local/share/devin/cli/plugins/cache`. That cache names a directory after a plugin's source rather than the plugin, so the plugin's manifest supplies the name. Devin's prompt hook input carries no `cwd`, so the hook takes the project directory from `DEVIN_PROJECT_DIR`. Claude Code and Codex resolve exactly as before: a Devin-only skill does not resolve there.
+
+Install the fork for Devin with `devin plugins install --yes vraj-ai/t3-pstack#plugins/pstack`, and pick up later releases with `devin plugins update`.
+
 ## 2.0.0-rc.5.vraj.1 - one prompt can name several skills
 
 This is the vraj-ai fork of t3-pstack. A new `UserPromptSubmit` hook, `hooks/skill-chain.mjs`, finds every `/name`, `/plugin:name`, and `$name` in a prompt that resolves to an installed SKILL.md, and lists them in prompt order. On Claude Code the agent invokes each through the Skill tool, and reads the SKILL.md only when the skill refuses model invocation. On Codex it reads each SKILL.md. Before this, Claude Code and Codex expanded only a leading skill, so a later `/t3-pstack:how` was plain text.

@@ -28,10 +28,22 @@ function fixture() {
   return { home, plugin, how, grill, review, codexReview, repo };
 }
 
-function run(f, prompt, { runtime = "claude", cwd = f.home, env = {} } = {}) {
+function run(f, prompt, { runtime = "claude", cwd = f.home, env = {}, stdin } = {}) {
   const out = Bun.spawnSync(["node", HOOK, runtime], {
-    stdin: new TextEncoder().encode(JSON.stringify({ prompt, cwd })),
-    env: { ...process.env, CLAUDE_CONFIG_DIR: "", CODEX_HOME: "", HOME: f.home, CLAUDE_PLUGIN_ROOT: f.plugin, ...env },
+    stdin: new TextEncoder().encode(JSON.stringify(stdin ?? { prompt, cwd })),
+    env: {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: "",
+      CODEX_HOME: "",
+      DEVIN_PLUGIN_ROOT: "",
+      DEVIN_PROJECT_DIR: "",
+      DEVIN_CONFIG_DIR: "",
+      COGNITION_CONFIG_DIR: "",
+      DEVIN_PLUGIN_CACHE: "",
+      HOME: f.home,
+      CLAUDE_PLUGIN_ROOT: f.plugin,
+      ...env,
+    },
   });
   expect(out.exitCode).toBe(0);
   const text = out.stdout.toString();
@@ -106,6 +118,36 @@ describe("skill-chain hook", () => {
     write(join(f.repo, ".claude/settings.local.json"), JSON.stringify({ skillOverrides: { grill: "off", issues: "on" } }));
     const context = run(f, "then /grill, /issues, and /pstack-recall", { cwd: f.repo });
     expect(order(context)).toEqual(["/issues", "/pstack-recall"]);
+  });
+
+  test("Devin reads its own skill roots and plugin cache", () => {
+    const f = fixture();
+    const devin = write(join(f.home, ".config/devin/skills/deploy/SKILL.md"));
+    const cognition = write(join(f.home, ".config/cognition/skills/recall/SKILL.md"));
+    const version = join(f.home, ".local/share/devin/cli/plugins/cache/github.com_addyosmani_agent-skills-dae9f025/0.6.13");
+    write(join(version, "plugin.json"), JSON.stringify({ name: "agent-skills" }));
+    const review = write(join(version, "skills/review/SKILL.md"));
+    const context = run(f, "then /deploy, /recall, and /agent-skills:review", { env: { DEVIN_PLUGIN_ROOT: f.plugin } });
+    expect(order(context)).toEqual(["/deploy", "/recall", "/agent-skills:review"]);
+    expect(context).toContain(devin);
+    expect(context).toContain(cognition);
+    expect(context).toContain(review);
+  });
+
+  test("Devin takes the project directory from its own variable", () => {
+    const f = fixture();
+    const local = write(join(f.repo, ".devin/skills/local/SKILL.md"));
+    const context = run(f, "then /local", {
+      stdin: { prompt: "then /local" },
+      env: { DEVIN_PLUGIN_ROOT: f.plugin, DEVIN_PROJECT_DIR: f.repo },
+    });
+    expect(context).toContain(local);
+  });
+
+  test("Claude Code does not read Devin's skill directories", () => {
+    const f = fixture();
+    write(join(f.home, ".config/devin/skills/deploy/SKILL.md"));
+    expect(order(run(f, "then /grill and /deploy"))).toEqual(["/grill"]);
   });
 
   test("prices are not names, and many unknown names stay fast", () => {

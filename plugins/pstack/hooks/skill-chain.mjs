@@ -11,6 +11,10 @@
 // goes through unchanged.
 //
 // Usage (hooks file): node "${CLAUDE_PLUGIN_ROOT}/hooks/skill-chain.mjs" <claude|codex>
+//
+// Devin reads Claude Code's hooks file, so it cannot pass its own name. It
+// exports DEVIN_PLUGIN_ROOT and DEVIN_PROJECT_DIR instead, and its prompt hook
+// input has no `cwd`; this hook reads both when they are set.
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -53,12 +57,55 @@ const inside = (dir, path) => {
   const rel = relative(dir, path);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 };
+// Claude Code and Codex name a cache directory after the plugin it holds, in
+// a marketplace/plugin/version nest. Devin nests source/version instead, so
+// only its manifest holds the plugin's name.
+const cache = (root, layout) => ({ root, layout });
+const manifest = (root) => json(join(root, "plugin.json")).name ?? json(join(root, ".claude-plugin/plugin.json")).name ?? null;
 
-// The active host's config home first, the other host's second.
+// The active host's config homes, skill roots, project skill directories, and
+// plugin caches. Devin runs this hook through Claude Code's hooks file, but
+// reads `/name` too and keeps its skills and cache elsewhere, so it needs its
+// own roots. Its cache wins there, then Claude Code's copy of a plugin, then
+// Codex's.
 export function hosts(runtime, env = process.env) {
-  const claude = env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
-  const codex = env.CODEX_HOME || join(homedir(), ".codex");
-  return runtime === "codex" ? { runtime, sigil: "$", homes: [codex, claude] } : { runtime: "claude", sigil: "/", homes: [claude, codex] };
+  const home = homedir();
+  const claudeHome = env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+  const codexHome = env.CODEX_HOME || join(home, ".codex");
+  const devinHome = env.DEVIN_CONFIG_DIR || join(home, ".config/devin");
+  const cognitionHome = env.COGNITION_CONFIG_DIR || join(home, ".config/cognition");
+  const agents = join(home, ".agents/skills");
+  const claudeCache = cache(join(claudeHome, "plugins/cache"), "market");
+  const codexCache = cache(join(codexHome, "plugins/cache"), "market");
+  const devinCache = cache(env.DEVIN_PLUGIN_CACHE || join(home, ".local/share/devin/cli/plugins/cache"), "source");
+  if (env.DEVIN_PLUGIN_ROOT || env.DEVIN_PROJECT_DIR) {
+    return {
+      runtime: "claude",
+      sigil: "/",
+      skillRoots: [join(devinHome, "skills"), join(cognitionHome, "skills"), agents, join(claudeHome, "skills"), join(codexHome, "skills")],
+      projectSubdirs: [".devin/skills", ".cognition/skills", ".agents/skills", ".claude/skills"],
+      caches: [devinCache, claudeCache, codexCache],
+      settings: [],
+    };
+  }
+  if (runtime === "codex") {
+    return {
+      runtime: "codex",
+      sigil: "$",
+      skillRoots: [join(codexHome, "skills"), agents, join(claudeHome, "skills")],
+      projectSubdirs: [".codex/skills", ".agents/skills", ".claude/skills"],
+      caches: [codexCache, claudeCache],
+      settings: [],
+    };
+  }
+  return {
+    runtime: "claude",
+    sigil: "/",
+    skillRoots: [join(claudeHome, "skills"), agents, join(codexHome, "skills")],
+    projectSubdirs: [".claude/skills", ".agents/skills"],
+    caches: [claudeCache, codexCache],
+    settings: [join(claudeHome, "settings.json")],
+  };
 }
 
 // The start directory and each parent up to the repository root, nearest first,
@@ -77,34 +124,51 @@ export function projectDirs(cwd) {
 // Skills turned off with `skillOverrides` in Claude Code's user, project, and
 // local settings, later files winning. Plugin skills ignore this setting.
 function disabled(host, projects) {
-  if (host.runtime !== "claude") return new Set();
+  if (!host.settings.length) return new Set();
   const root = projects.at(-1);
-  const files = [join(host.homes[0], "settings.json"), ...(root ? [join(root, ".claude/settings.json"), join(root, ".claude/settings.local.json")] : [])];
+  const files = [...host.settings, ...(root ? [join(root, ".claude/settings.json"), join(root, ".claude/settings.local.json")] : [])];
   const merged = Object.assign({}, ...files.map((f) => json(f).skillOverrides ?? {}));
   return new Set(Object.entries(merged).filter(([, v]) => v === "off").map(([k]) => k));
 }
 
+// Every plugin the caches hold, as `{ root, name }`, name being the plugin.
+function cachePlugins({ root, layout }) {
+  const found = [];
+  if (layout === "source") {
+    for (const source of dirs(root)) {
+      for (const version of dirs(join(root, source))) {
+        const at = join(root, source, version);
+        found.push({ root: at, name: manifest(at) });
+      }
+    }
+    return found;
+  }
+  for (const market of dirs(root)) {
+    for (const plugin of dirs(join(root, market))) {
+      for (const version of dirs(join(root, market, plugin))) {
+        found.push({ root: join(root, market, plugin, version), name: plugin });
+      }
+    }
+  }
+  return found;
+}
+
 // Every installed plugin skill, walked once per prompt, under
-// `<home>/plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>/`.
-// Keys are `<plugin>:<skill>` and `:<skill>`. The active host's cache wins,
-// then the copy marked in use, then the newest.
+// `<cache root>/<version root>/skills/<skill>/`. Keys are `<plugin>:<skill>` and
+// `:<skill>`. The active host's cache wins, then the copy marked in use, then
+// the newest.
 function pluginIndex(host) {
   const index = new Map();
-  for (const home of host.homes) {
-    const cache = join(home, "plugins/cache");
+  for (const cache of host.caches) {
     const hits = new Map();
-    for (const market of dirs(cache)) {
-      for (const plugin of dirs(join(cache, market))) {
-        for (const version of dirs(join(cache, market, plugin))) {
-          const root = join(cache, market, plugin, version);
-          const inUse = existsSync(join(root, ".in_use"));
-          for (const skill of dirs(join(root, "skills"))) {
-            const path = file(join(root, "skills", skill, "SKILL.md"));
-            if (!path) continue;
-            const hit = { path, inUse, mtime: statSync(path).mtimeMs };
-            for (const key of [`${plugin}:${skill}`, `:${skill}`]) hits.set(key, [...(hits.get(key) ?? []), hit]);
-          }
-        }
+    for (const { root, name } of cachePlugins(cache)) {
+      if (!name) continue;
+      const inUse = existsSync(join(root, ".in_use"));
+      for (const skill of dirs(join(root, "skills"))) {
+        const path = file(join(root, "skills", skill, "SKILL.md"));
+        if (!path) continue;
+        const hit = { path, inUse, mtime: statSync(path).mtimeMs };
+        for (const key of [`${name}:${skill}`, `:${skill}`]) hits.set(key, [...(hits.get(key) ?? []), hit]);
       }
     }
     for (const [key, list] of hits) {
@@ -128,12 +192,12 @@ export function resolve(name, { cwd, pluginRoot, pluginName = "t3-pstack", host 
   }
   const projects = (cache.projects ??= projectDirs(cwd));
   if ((cache.disabled ??= disabled(host, projects)).has(name)) return null;
-  for (const root of [join(host.homes[0], "skills"), join(homedir(), ".agents/skills"), join(host.homes[1], "skills")]) {
+  for (const root of host.skillRoots) {
     const path = file(join(root, name, "SKILL.md"));
     if (path) return path;
   }
   for (const dir of projects) {
-    for (const sub of [".claude/skills", ".agents/skills"]) {
+    for (const sub of host.projectSubdirs) {
       const path = file(join(dir, sub, name, "SKILL.md"));
       if (path && inside(dir, path)) return path;
     }
@@ -174,7 +238,11 @@ if (isMain) {
   try {
     const data = JSON.parse(readFileSync(0, "utf8"));
     const host = hosts(process.argv[2]);
-    const context = chain(data.prompt ?? "", { cwd: data.cwd ?? process.cwd(), pluginRoot: process.env.CLAUDE_PLUGIN_ROOT, host });
+    // Devin's hook input has no cwd, and Claude Code reads a project directory
+    // from this file only when its prompt hook input lacks one too.
+    const cwd = data.cwd ?? process.env.DEVIN_PROJECT_DIR ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? process.env.DEVIN_PLUGIN_ROOT;
+    const context = chain(data.prompt ?? "", { cwd, pluginRoot, host });
     if (context) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } }));
   } catch {
     // Fail open.
