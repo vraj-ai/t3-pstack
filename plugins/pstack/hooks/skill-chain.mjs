@@ -17,7 +17,8 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const TOKEN = /(?<![^\s(`"'])([/$])([a-z0-9][a-z0-9_-]*(?::[a-z0-9][a-z0-9_-]*)?)(?![\w/:-])/g;
+// A skill name starts with a letter, so `$5` and `$1,000` are not names.
+const TOKEN = /(?<![^\s(`"'])([/$])([a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)?)(?![\w/:-])/g;
 const FENCE = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\S\n]*$/gm;
 
 const file = (path) => {
@@ -83,39 +84,50 @@ function disabled(host, projects) {
   return new Set(Object.entries(merged).filter(([, v]) => v === "off").map(([k]) => k));
 }
 
-// An installed plugin's skill, under `<home>/plugins/cache/<marketplace>/<plugin>/<version>/skills/`.
-// The active host's cache wins, then the copy marked in use, then the newest.
-function cachedSkill(host, plugin, skill) {
+// Every installed plugin skill, walked once per prompt, under
+// `<home>/plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>/`.
+// Keys are `<plugin>:<skill>` and `:<skill>`. The active host's cache wins,
+// then the copy marked in use, then the newest.
+function pluginIndex(host) {
+  const index = new Map();
   for (const home of host.homes) {
     const cache = join(home, "plugins/cache");
-    const hits = [];
+    const hits = new Map();
     for (const market of dirs(cache)) {
-      for (const name of plugin ? [plugin] : dirs(join(cache, market))) {
-        for (const version of dirs(join(cache, market, name))) {
-          const root = join(cache, market, name, version);
-          const path = file(join(root, "skills", skill, "SKILL.md"));
-          if (path) hits.push({ path, inUse: existsSync(join(root, ".in_use")), mtime: statSync(path).mtimeMs });
+      for (const plugin of dirs(join(cache, market))) {
+        for (const version of dirs(join(cache, market, plugin))) {
+          const root = join(cache, market, plugin, version);
+          const inUse = existsSync(join(root, ".in_use"));
+          for (const skill of dirs(join(root, "skills"))) {
+            const path = file(join(root, "skills", skill, "SKILL.md"));
+            if (!path) continue;
+            const hit = { path, inUse, mtime: statSync(path).mtimeMs };
+            for (const key of [`${plugin}:${skill}`, `:${skill}`]) hits.set(key, [...(hits.get(key) ?? []), hit]);
+          }
         }
       }
     }
-    hits.sort((a, b) => b.inUse - a.inUse || b.mtime - a.mtime);
-    if (hits.length) return hits[0].path;
+    for (const [key, list] of hits) {
+      list.sort((a, b) => b.inUse - a.inUse || b.mtime - a.mtime);
+      if (!index.has(key)) index.set(key, list[0].path);
+    }
   }
-  return null;
+  return index;
 }
 
 // Personal skills, then project skills, then this plugin, then other plugins:
 // Claude Code's order, so a cloned repo cannot shadow a personal skill. A
 // project skill counts only when its real path stays inside the directory that
 // holds it, so a symlink cannot pull an outside file into context.
-export function resolve(name, { cwd, pluginRoot, pluginName = "t3-pstack", host = hosts("claude") }) {
+export function resolve(name, { cwd, pluginRoot, pluginName = "t3-pstack", host = hosts("claude"), cache = {} }) {
   const own = (skill) => (pluginRoot ? file(join(pluginRoot, "skills", skill, "SKILL.md")) : null);
+  const plugins = () => (cache.plugins ??= pluginIndex(host));
   if (name.includes(":")) {
     const [plugin, skill] = name.split(":");
-    return (plugin === pluginName && own(skill)) || cachedSkill(host, plugin, skill);
+    return (plugin === pluginName && own(skill)) || plugins().get(name) || null;
   }
-  const projects = projectDirs(cwd);
-  if (disabled(host, projects).has(name)) return null;
+  const projects = (cache.projects ??= projectDirs(cwd));
+  if ((cache.disabled ??= disabled(host, projects)).has(name)) return null;
   for (const root of [join(host.homes[0], "skills"), join(homedir(), ".agents/skills"), join(host.homes[1], "skills")]) {
     const path = file(join(root, name, "SKILL.md"));
     if (path) return path;
@@ -126,7 +138,7 @@ export function resolve(name, { cwd, pluginRoot, pluginName = "t3-pstack", host 
       if (path && inside(dir, path)) return path;
     }
   }
-  return own(name) || cachedSkill(host, null, name);
+  return own(name) || plugins().get(`:${name}`) || null;
 }
 
 export function chain(prompt, options) {
@@ -134,9 +146,10 @@ export function chain(prompt, options) {
   const text = prompt.replace(FENCE, (block) => " ".repeat(block.length));
   const seen = new Set();
   const steps = [];
+  const cache = {};
   for (const m of text.matchAll(TOKEN)) {
     if (seen.has(m[2])) continue;
-    const path = resolve(m[2], { ...options, host });
+    const path = resolve(m[2], { ...options, host, cache });
     if (!path) continue;
     seen.add(m[2]);
     steps.push({ token: m[0], sigil: m[1], path, at: m.index });

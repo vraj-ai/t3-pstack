@@ -108,6 +108,15 @@ describe("skill-chain hook", () => {
     expect(order(context)).toEqual(["/issues", "/pstack-recall"]);
   });
 
+  test("prices are not names, and many unknown names stay fast", () => {
+    const f = fixture();
+    expect(order(run(f, "it costs $5, maybe $1,000. then /grill and /issues"))).toEqual(["/grill", "/issues"]);
+    const unknown = Array.from({ length: 500 }, (_, i) => `/nope${"abcdefghij"[i % 10]}${i}`).join(" ");
+    const start = performance.now();
+    expect(order(run(f, `${unknown} then /grill`))).toEqual(["/grill"]);
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
   test("fails open on bad input", () => {
     const out = Bun.spawnSync(["node", HOOK, "claude"], { stdin: new TextEncoder().encode("not json") });
     expect(out.exitCode).toBe(0);
