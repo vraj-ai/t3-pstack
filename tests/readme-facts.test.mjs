@@ -26,7 +26,7 @@ describe("README facts match the tree", () => {
 
   test("the pinned installer command names this release's tag", () => {
     const version = readFileSync(join(repoRoot, "VERSION"), "utf8").trim();
-    expect([...readme.matchAll(/npx -y github:chhoumann\/t3-pstack#v([^\s`]+)/g)].map((m) => m[1])).toEqual([version]);
+    expect([...readme.matchAll(/npx -y github:vraj-ai\/t3-pstack#v([^\s`]+)/g)].map((m) => m[1])).toEqual([version]);
   });
 
   test("the documented upstream pin matches every component's pin", () => {
