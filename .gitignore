@@ -22,3 +22,6 @@ plugins/pstack/skills/poteto-mode/scripts/node_modules/
 
 # Lake build output for the Lean models
 /lean/.lake/
+
+# Evidence from .cursor/skills/verify-t3-pstack/scripts/verify.sh
+/.verify/
